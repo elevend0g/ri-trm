@@ -26,7 +26,7 @@ class Rule:
     severity: str = "error"  # "error", "warning", "info"
 
 
-@dataclass 
+@dataclass(frozen=True)
 class Violation:
     """A rule violation detected during verification"""
     rule_id: str

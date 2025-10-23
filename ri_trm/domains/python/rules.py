@@ -368,7 +368,8 @@ class PythonRuleVerifier(RuleVerifier):
         template_tokens = self._code_to_tokens(template)
         
         if template_tokens:
-            return torch.tensor(template_tokens, dtype=torch.long)
+            # Add batch dimension [B=1, L]
+            return torch.tensor(template_tokens, dtype=torch.long).unsqueeze(0)
         
         return None
     
@@ -406,20 +407,23 @@ class PythonRuleVerifier(RuleVerifier):
         # Create simple embedding based on violation type
         embeddings = []
         for violation in violations:
+            # Get violation message (handle both string and Violation objects)
+            violation_text = violation.message if hasattr(violation, 'message') else str(violation)
+            
             # Categorize violation type
-            if "syntax" in violation.lower() or "error" in violation.lower():
+            if "syntax" in violation_text.lower() or "error" in violation_text.lower():
                 # Syntax error embedding
                 emb = torch.randn(self.embedding_dim) * 0.1
                 emb[0] = 1.0  # Syntax error marker
-            elif "import" in violation.lower():
+            elif "import" in violation_text.lower():
                 # Import error embedding
                 emb = torch.randn(self.embedding_dim) * 0.1
                 emb[1] = 1.0  # Import error marker
-            elif "name" in violation.lower() or "variable" in violation.lower():
+            elif "name" in violation_text.lower() or "variable" in violation_text.lower():
                 # Name/variable error embedding
                 emb = torch.randn(self.embedding_dim) * 0.1
                 emb[2] = 1.0  # Variable error marker
-            elif "type" in violation.lower():
+            elif "type" in violation_text.lower():
                 # Type error embedding
                 emb = torch.randn(self.embedding_dim) * 0.1
                 emb[3] = 1.0  # Type error marker

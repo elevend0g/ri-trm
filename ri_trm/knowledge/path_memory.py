@@ -221,15 +221,19 @@ class PathMemoryGraph(nn.Module):
         candidate_paths = []
         
         for error_state in error_states:
+            # Convert Violation to string key for lookup
+            error_key = str(error_state) if hasattr(error_state, '__str__') else error_state
+            
             # Exact matches
-            exact_paths = [self.paths[pid] for pid in self.error_to_paths.get(error_state, set())]
+            exact_paths = [self.paths[pid] for pid in self.error_to_paths.get(error_key, set())]
             candidate_paths.extend(exact_paths)
             
             # Similar states (simplified - could use embedding similarity)
             for state in self.error_to_paths.keys():
-                if error_state in state or state in error_state:
-                    similar_paths = [self.paths[pid] for pid in self.error_to_paths[state]]
-                    candidate_paths.extend(similar_paths)
+                if isinstance(state, str) and isinstance(error_key, str):
+                    if error_key in state or state in error_key:
+                        similar_paths = [self.paths[pid] for pid in self.error_to_paths[state]]
+                        candidate_paths.extend(similar_paths)
         
         # Remove duplicates and sort by weight
         unique_paths = {p.id: p for p in candidate_paths}

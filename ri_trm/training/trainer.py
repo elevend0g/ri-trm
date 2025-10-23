@@ -17,7 +17,12 @@ import time
 import json
 import os
 from dataclasses import dataclass, asdict
-import wandb
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    wandb = None
 from tqdm import tqdm
 
 from ..models.network import TinyRecursiveNetwork
@@ -270,11 +275,14 @@ class RITRMTrainer:
     
     def _init_wandb(self):
         """Initialize Weights & Biases logging"""
-        wandb.init(
-            project="ri-trm",
-            config=asdict(self.config),
-            name=f"ri-trm-{int(time.time())}"
-        )
+        if WANDB_AVAILABLE and wandb is not None:
+            wandb.init(
+                project="ri-trm",
+                config=asdict(self.config),
+                name=f"ri-trm-{int(time.time())}"
+            )
+        else:
+            print("Warning: wandb not available, skipping wandb initialization")
     
     def named_parameters(self):
         """Get all named parameters from model components"""
@@ -481,7 +489,7 @@ class RITRMTrainer:
     
     def _log_metrics(self, metrics: Dict[str, float], epoch: int, step: int):
         """Log training metrics"""
-        if self.config.use_wandb:
+        if self.config.use_wandb and WANDB_AVAILABLE and wandb is not None:
             wandb.log(metrics, step=epoch * 1000 + step)
         
         # Console logging

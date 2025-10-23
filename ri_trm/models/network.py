@@ -46,15 +46,20 @@ class RotaryEmbedding(nn.Module):
         emb = torch.cat((freqs, freqs), dim=-1)
         self.register_buffer('cos_cached', emb.cos())
         self.register_buffer('sin_cached', emb.sin())
+        self.max_seq_len = seq_len
     
     def forward(self, x: torch.Tensor, seq_len: int) -> Tuple[torch.Tensor, torch.Tensor]:
         if seq_len > self.max_seq_len:
             self._init_cache(seq_len * 2)
         
-        return (
-            self.cos_cached[:seq_len].to(x.device),
-            self.sin_cached[:seq_len].to(x.device)
-        )
+        cos = self.cos_cached[:seq_len].to(x.device)
+        sin = self.sin_cached[:seq_len].to(x.device)
+        
+        # Expand dimensions to match query/key shape [B, num_heads, L, head_dim]
+        cos = cos.unsqueeze(0).unsqueeze(0)  # [1, 1, L, head_dim]
+        sin = sin.unsqueeze(0).unsqueeze(0)  # [1, 1, L, head_dim]
+        
+        return cos, sin
 
 
 def apply_rotary_embedding(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -104,14 +109,14 @@ class MultiHeadAttention(nn.Module):
         qkv = self.qkv(x).view(B, L, 3, self.num_heads, self.head_dim)
         q, k, v = qkv.unbind(2)
         
-        # Apply rotary embeddings
-        cos, sin = self.rotary_emb(x, L)
-        q, k = apply_rotary_embedding(q, k, cos, sin)
-        
-        # Transpose for attention computation
+        # Transpose for attention computation first
         q = q.transpose(1, 2)  # (B, num_heads, L, head_dim)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
+        
+        # Apply rotary embeddings
+        cos, sin = self.rotary_emb(x, L)
+        q, k = apply_rotary_embedding(q, k, cos, sin)
         
         # Scaled dot-product attention
         scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale
@@ -193,7 +198,13 @@ class TinyRecursiveNetwork(nn.Module):
         """
         # Combine inputs for reasoning context
         # Note: This follows TRM's approach of including x, y, z in reasoning
-        reasoning_input = z + x + y  # Simple addition as in TRM
+        # Ensure all tensors have the same sequence length
+        min_seq_len = min(x.shape[1], y.shape[1], z.shape[1])
+        x_truncated = x[:, :min_seq_len, :]
+        y_truncated = y[:, :min_seq_len, :]
+        z_truncated = z[:, :min_seq_len, :]
+        
+        reasoning_input = z_truncated + x_truncated + y_truncated  # Simple addition as in TRM
         
         # Add violation and path information if available
         if violations is not None:
