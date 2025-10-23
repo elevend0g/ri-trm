@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Rule-Initialized Tiny Recursive Model (RI-TRM)"
+abstract: "A proof of concept implementation of Rule-Initialized Tiny Recursive Models, achieving expert-level performance on formal reasoning tasks using only 7M parameters by separating explicit structural knowledge from learned decision-making patterns."
+authors:
+  - family-names: "RI-TRM Research Team"
+    given-names: ""
+repository-code: "https://github.com/your-username/ri-trm"
+url: "https://github.com/your-username/ri-trm"
+license: MIT
+version: "0.1.0"
+date-released: "2024-10-23"
+keywords:
+  - "machine learning"
+  - "neural networks"
+  - "recursive reasoning"
+  - "neuro-symbolic AI"
+  - "code generation"
+  - "knowledge graphs"
+  - "interpretable AI"

@@ -1,0 +1,12 @@
+# RI-TRM Requirements
+torch>=2.0.0
+numpy>=1.21.0
+tqdm>=4.64.0
+wandb>=0.13.0
+psutil>=5.9.0
+
+# For evaluation and Python verification
+ast-check>=0.1.0
+
+# Optional: for advanced type checking
+mypy>=1.0.0
