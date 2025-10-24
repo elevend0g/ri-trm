@@ -38,28 +38,29 @@ class PythonRuleVerifier(RuleVerifier):
         embedding_dim: int = 512,
         enable_type_checking: bool = True,
         enable_import_checking: bool = True,
-        strict_mode: bool = False
+        strict_mode: bool = False,
+        tokenizer_name: str = "gpt2"
     ):
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
         self.enable_type_checking = enable_type_checking
         self.enable_import_checking = enable_import_checking
         self.strict_mode = strict_mode
-        
+
         # Initialize specialized verifiers
         self.syntax_verifier = PythonSyntaxVerifier()
-        
+
         if enable_type_checking:
             self.type_verifier = PythonTypeVerifier()
         else:
             self.type_verifier = None
-        
+
         # Common Python patterns and rules
         self._init_python_rules()
-        
-        # Tokenizer simulation (placeholder - would use real tokenizer)
-        self.token_to_text = {}  # Maps token IDs to text
-        self.text_to_token = {}  # Maps text to token IDs
+
+        # Real tokenizer integration
+        from ...tokenizer import get_tokenizer
+        self.tokenizer = get_tokenizer(model_name=tokenizer_name, max_length=512)
         
         # Standard library and common imports
         self.stdlib_modules = {
@@ -120,22 +121,13 @@ class PythonRuleVerifier(RuleVerifier):
         ]
     
     def _tokens_to_code(self, tokens: List[int]) -> str:
-        """Convert token IDs to Python code string"""
-        # Placeholder implementation
-        # In a real system, this would use the actual tokenizer
-        if not self.token_to_text:
-            # Create dummy mapping for demonstration
-            return f"# Generated code from {len(tokens)} tokens\npass"
-        
-        code_parts = []
-        for token_id in tokens:
-            if token_id in self.token_to_text:
-                code_parts.append(self.token_to_text[token_id])
-            else:
-                code_parts.append(f"<unk_{token_id}>")
-        
-        return " ".join(code_parts)
-    
+        """Convert token IDs to Python code string using real tokenizer"""
+        return self.tokenizer.decode(tokens, skip_special_tokens=True)
+
+    def _code_to_tokens(self, code: str) -> List[int]:
+        """Convert Python code string to token IDs using real tokenizer"""
+        return self.tokenizer.encode(code, padding=True, return_tensors=False)
+
     def _extract_task_requirements(self, task_tokens: List[int]) -> Dict[str, Any]:
         """Extract requirements from task specification"""
         # Placeholder implementation
@@ -373,43 +365,25 @@ class PythonRuleVerifier(RuleVerifier):
         
         return None
     
-    def _code_to_tokens(self, code: str) -> List[int]:
-        """Convert code string to token IDs"""
-        # Placeholder implementation
-        # In real system, would use actual tokenizer
-        words = code.split()
-        tokens = []
-        
-        for word in words:
-            if word not in self.text_to_token:
-                # Assign new token ID
-                token_id = len(self.text_to_token)
-                self.text_to_token[word] = token_id
-                self.token_to_text[token_id] = word
-            
-            tokens.append(self.text_to_token[word])
-        
-        return tokens
-    
     def embed_violations(self, violations: List[str]) -> Optional[torch.Tensor]:
         """
         Convert violations to embeddings for neural network
-        
+
         Args:
             violations: List of violation descriptions
-            
+
         Returns:
-            Violation embeddings [V, D]
+            Violation embeddings [B, V, D] where B=1, V is number of violations
         """
         if not violations:
             return None
-        
+
         # Create simple embedding based on violation type
         embeddings = []
         for violation in violations:
             # Get violation message (handle both string and Violation objects)
             violation_text = violation.message if hasattr(violation, 'message') else str(violation)
-            
+
             # Categorize violation type
             if "syntax" in violation_text.lower() or "error" in violation_text.lower():
                 # Syntax error embedding
@@ -430,10 +404,14 @@ class PythonRuleVerifier(RuleVerifier):
             else:
                 # Generic error embedding
                 emb = torch.randn(self.embedding_dim) * 0.1
-            
+
             embeddings.append(emb)
-        
-        return torch.stack(embeddings)
+
+        # Stack embeddings: [V, D]
+        stacked = torch.stack(embeddings)
+
+        # Add batch dimension: [V, D] -> [1, V, D]
+        return stacked.unsqueeze(0)
     
     def get_rule_suggestions(self, violations: List[Violation]) -> List[str]:
         """

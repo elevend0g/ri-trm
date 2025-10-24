@@ -52,7 +52,11 @@ class RuleVerifier(ABC):
     
     @abstractmethod
     def embed_violations(self, violations: List[str]) -> Optional[torch.Tensor]:
-        """Convert violations to embeddings for neural network"""
+        """Convert violations to embeddings for neural network
+
+        Returns:
+            Violation embeddings [B, V, D] where B=1, V is number of violations
+        """
         pass
 
 
@@ -182,16 +186,16 @@ class StructuralRuleGraph(nn.Module):
     def embed_violations(self, violations: List[str]) -> Optional[torch.Tensor]:
         """
         Convert violations to neural network embeddings
-        
+
         Args:
             violations: List of violation descriptions
-            
+
         Returns:
-            Violation embeddings [V, D] where V is number of violations
+            Violation embeddings [B, V, D] where B=1, V is number of violations
         """
         if not violations:
             return None
-        
+
         violation_ids = []
         for violation in violations:
             if violation not in self.violation_to_id:
@@ -200,12 +204,15 @@ class StructuralRuleGraph(nn.Module):
                     self.next_violation_id = 0
                 self.violation_to_id[violation] = self.next_violation_id
                 self.next_violation_id += 1
-            
+
             violation_ids.append(self.violation_to_id[violation])
-        
+
         violation_tensor = torch.tensor(violation_ids, dtype=torch.long)
-        embeddings = self.violation_embedding(violation_tensor)
-        
+        embeddings = self.violation_embedding(violation_tensor)  # [V, D]
+
+        # Add batch dimension: [V, D] -> [1, V, D]
+        embeddings = embeddings.unsqueeze(0)
+
         return embeddings
     
     def get_rules_by_type(self, rule_type: str) -> List[Rule]:
@@ -241,12 +248,12 @@ class StructuralRuleGraph(nn.Module):
     def forward(self, violations: List[str]) -> torch.Tensor:
         """
         Forward pass for embedding violations
-        
+
         Args:
             violations: List of violation descriptions
-            
+
         Returns:
-            Embedded violations [V, D]
+            Embedded violations [B, V, D] where B=1, V is number of violations
         """
         return self.embed_violations(violations)
 

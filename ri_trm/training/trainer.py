@@ -313,6 +313,9 @@ class RITRMTrainer:
             "test_pass_rate": 0.0,
             "avg_reasoning_steps": 0.0,
             "avg_confidence": 0.0,
+            "path_memory_size": 0.0,
+            "path_memory_epsilon": 0.0,
+            "path_avg_weight": 0.0,
             "num_batches": 0
         }
         
@@ -424,11 +427,15 @@ class RITRMTrainer:
         
         # Update adaptive loss weights
         if self.adaptive_loss:
-            test_pass_rate = sum(r.get("passed_tests", 0) / max(r.get("total_tests", 1), 1) 
+            test_pass_rate = sum(r.get("passed_tests", 0) / max(r.get("total_tests", 1), 1)
                                for r in test_results) / len(test_results)
             new_weights = self.adaptive_loss.step(loss_components, test_pass_rate, epoch)
             self.loss_fn.update_loss_weights(new_weights)
-        
+
+        # Update path memory with Hebbian learning
+        if hasattr(self.solver, 'path_memory') and self.solver.path_memory is not None:
+            self._update_path_memory(reasoning_traces, test_results)
+
         # Collect metrics
         step_metrics = {
             "total_loss": loss_components.total_loss.item(),
@@ -436,16 +443,23 @@ class RITRMTrainer:
             "test_loss": loss_components.test_loss.item(),
             "path_loss": loss_components.path_loss.item(),
             "confidence_loss": loss_components.confidence_loss.item(),
-            "test_pass_rate": sum(r.get("passed_tests", 0) / max(r.get("total_tests", 1), 1) 
+            "test_pass_rate": sum(r.get("passed_tests", 0) / max(r.get("total_tests", 1), 1)
                                 for r in test_results) / len(test_results),
             "avg_reasoning_steps": sum(len(trace) for trace in reasoning_traces) / len(reasoning_traces),
             "avg_confidence": sum(r.final_confidence for r in [
-                type('obj', (object,), {'final_confidence': c.item()})() 
+                type('obj', (object,), {'final_confidence': c.item()})()
                 for c in confidence_scores
             ]) / len(confidence_scores),
             "learning_rate": self.scheduler.get_last_lr()[0],
             "step_time": time.time() - step_start_time
         }
+
+        # Add path memory metrics if available
+        if hasattr(self.solver, 'path_memory') and self.solver.path_memory is not None:
+            path_stats = self.solver.path_memory.get_path_statistics()
+            step_metrics["path_memory_size"] = path_stats.get("total_paths", 0)
+            step_metrics["path_memory_epsilon"] = path_stats.get("current_epsilon", 0.0)
+            step_metrics["path_avg_weight"] = path_stats.get("average_weight", 0.0)
         
         return step_metrics
     
@@ -479,7 +493,46 @@ class RITRMTrainer:
             tests=batch.tests,
             metadata=batch.metadata
         )
-    
+
+    def _update_path_memory(self, reasoning_traces: List[List], test_results: List[Dict]):
+        """
+        Update path memory with Hebbian learning based on reasoning traces
+
+        Args:
+            reasoning_traces: List of reasoning traces from each task in batch
+            test_results: List of test results for each task
+        """
+        if not reasoning_traces or not self.solver.path_memory:
+            return
+
+        for trace, test_result in zip(reasoning_traces, test_results):
+            if not trace:
+                continue
+
+            # Determine overall success for this task
+            task_success = test_result.get("passed_tests", 0) == test_result.get("total_tests", 1)
+
+            # Update each step in the reasoning trace
+            for step in trace:
+                if not hasattr(step, 'violations') or not hasattr(step, 'selected_path'):
+                    continue
+
+                # Extract step information
+                error_states = step.violations if step.violations else []
+                selected_action = step.selected_path
+                step_success = step.success if hasattr(step, 'success') else task_success
+
+                # Determine result state (simplified - could extract from next step)
+                result_states = ["improved"] if step_success else ["failed"]
+
+                # Update path memory using Hebbian learning
+                self.solver.path_memory.update_path(
+                    error_states=error_states,
+                    selected_action=selected_action,
+                    result_states=result_states,
+                    success=step_success
+                )
+
     def _update_ema(self):
         """Update exponential moving average of parameters"""
         for name, param in self.named_parameters():

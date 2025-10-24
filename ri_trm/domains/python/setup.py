@@ -29,13 +29,15 @@ class PythonDomainSetup:
         embedding_dim: int = 512,
         vocab_size: int = 32000,
         enable_type_checking: bool = True,
-        strict_mode: bool = False
+        strict_mode: bool = False,
+        tokenizer_name: str = "gpt2"
     ):
         self.embedding_dim = embedding_dim
         self.vocab_size = vocab_size
         self.enable_type_checking = enable_type_checking
         self.strict_mode = strict_mode
-        
+        self.tokenizer_name = tokenizer_name
+
         # Knowledge components
         self.rule_graph: Optional[StructuralRuleGraph] = None
         self.fact_graph: Optional[FactualKnowledgeGraph] = None
@@ -115,7 +117,8 @@ class PythonDomainSetup:
             vocab_size=self.vocab_size,
             embedding_dim=self.embedding_dim,
             enable_type_checking=self.enable_type_checking,
-            strict_mode=self.strict_mode
+            strict_mode=self.strict_mode,
+            tokenizer_name=self.tokenizer_name
         )
     
     def _get_python_rules(self) -> List[Rule]:

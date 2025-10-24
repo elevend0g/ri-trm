@@ -48,11 +48,16 @@ def demonstrate_knowledge_setup():
     print("\n" + "="*60)
     print("STEP 1: SETTING UP THREE-LAYER KNOWLEDGE ARCHITECTURE")
     print("="*60)
-    
+
+    # Get vocab size from tokenizer
+    from ri_trm.tokenizer import get_tokenizer
+    tokenizer = get_tokenizer(model_name="gpt2", max_length=512)
+    vocab_size = tokenizer.vocab_size
+
     # Initialize Python domain setup
     domain_setup = PythonDomainSetup(
         embedding_dim=512,
-        vocab_size=32000,
+        vocab_size=vocab_size,
         enable_type_checking=True,
         strict_mode=False
     )
@@ -86,12 +91,17 @@ def create_ri_trm_model(knowledge_components: Dict[str, Any], device: str):
     print("\n" + "="*60)
     print("STEP 2: CREATING RI-TRM MODEL")
     print("="*60)
-    
+
+    # Get vocab size from tokenizer
+    from ri_trm.tokenizer import get_tokenizer
+    tokenizer = get_tokenizer(model_name="gpt2", max_length=512)
+    vocab_size = tokenizer.vocab_size
+
     config = TrainingConfig(
         hidden_size=512,
         num_layers=2,  # Tiny network
         num_heads=8,
-        vocab_size=32000,
+        vocab_size=vocab_size,
         max_seq_len=512,
         max_iterations=16,
         reasoning_steps=6
@@ -169,30 +179,30 @@ def generate_training_data():
     print("\n" + "="*60)
     print("STEP 3: GENERATING TRAINING DATA")
     print("="*60)
-    
-    # Create dataset
+
+    # Create dataset (vocab_size is determined by the tokenizer internally)
     train_dataset = PythonCodeTaskDataset(
-        tokenizer_vocab_size=32000,
         max_seq_len=512,
         include_solutions=True,
-        difficulty_levels=["easy", "medium"]
+        difficulty_levels=["easy", "medium"],
+        tokenizer_name="gpt2"
     )
-    
+
     print("Generating synthetic Python coding tasks...")
-    
+
     # Generate synthetic tasks
     synthetic_tasks = train_dataset.generate_synthetic_tasks(100)
     train_dataset.add_tasks(synthetic_tasks)
-    
+
     # Add HumanEval-style tasks
     humaneval_tasks = train_dataset.create_humaneval_subset(10)
     train_dataset.add_tasks(humaneval_tasks)
-    
+
     # Validation dataset
     val_dataset = PythonCodeTaskDataset(
-        tokenizer_vocab_size=32000,
         max_seq_len=512,
-        include_solutions=True
+        include_solutions=True,
+        tokenizer_name="gpt2"
     )
     
     val_tasks = val_dataset.generate_synthetic_tasks(20)
@@ -267,7 +277,10 @@ def train_model(solver, config, train_dataset, val_dataset, knowledge_components
         return trainer, metrics_history
         
     except Exception as e:
+        import traceback
         print(f"Training error: {e}")
+        print("Full traceback:")
+        traceback.print_exc()
         print("Continuing with untrained model for demonstration...")
         return trainer, []
 

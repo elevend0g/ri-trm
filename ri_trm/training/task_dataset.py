@@ -199,23 +199,34 @@ class PythonCodeTaskDataset(TaskDataset):
         tokenizer_vocab_size: int = 32000,
         max_seq_len: int = 512,
         include_solutions: bool = True,
-        difficulty_levels: List[str] = None
+        difficulty_levels: List[str] = None,
+        tokenizer_name: str = "gpt2"
     ):
         super().__init__(tokenizer_vocab_size, max_seq_len, include_solutions)
-        
+
         self.difficulty_levels = difficulty_levels or ["easy", "medium", "hard"]
-        
-        # Python-specific tokens
-        self.python_keywords = [
-            "def", "class", "if", "else", "elif", "for", "while", "try", "except",
-            "finally", "with", "import", "from", "return", "yield", "pass", "break",
-            "continue", "and", "or", "not", "is", "in", "lambda", "global", "nonlocal"
-        ]
-        
-        # Pre-tokenize Python keywords
-        for keyword in self.python_keywords:
-            self._get_token_id(keyword)
-    
+
+        # Real tokenizer integration
+        from ..tokenizer import get_tokenizer
+        self.real_tokenizer = get_tokenizer(model_name=tokenizer_name, max_length=max_seq_len)
+
+        # Update vocab size and special tokens from real tokenizer
+        self.tokenizer_vocab_size = self.real_tokenizer.vocab_size
+        self.pad_token = self.real_tokenizer.pad_token_id
+        self.eos_token = self.real_tokenizer.eos_token_id
+
+    def _tokenize_text(self, text: str) -> List[int]:
+        """Use real tokenizer instead of placeholder"""
+        return self.real_tokenizer.encode(text, padding=False, return_tensors=False)
+
+    def _pad_sequence(self, tokens: List[int]) -> torch.Tensor:
+        """Pad using real tokenizer's padding token"""
+        if len(tokens) > self.max_seq_len:
+            tokens = tokens[:self.max_seq_len]
+
+        padded = tokens + [self.pad_token] * (self.max_seq_len - len(tokens))
+        return torch.tensor(padded, dtype=torch.long)
+
     def load_tasks(self, data_source: str):
         """Load Python coding tasks from JSON file"""
         try:
