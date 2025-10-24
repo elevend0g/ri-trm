@@ -384,7 +384,8 @@ class RITRMTrainer:
                 test_results.append({"passed_tests": 0, "total_tests": 1})  # Assume failure
         
         # Stack solutions and confidence scores
-        solution_tokens = torch.stack(solutions)  # [B, L]
+        # Each solution is [1, L], so squeeze to [L] before stacking
+        solution_tokens = torch.stack([s.squeeze(0) for s in solutions])  # [B, L]
         confidence_tensor = torch.stack(confidence_scores).to(self.device)  # [B]
         
         # Get logits for solutions (if ground truth available)

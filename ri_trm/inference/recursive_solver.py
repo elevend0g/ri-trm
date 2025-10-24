@@ -95,28 +95,42 @@ class RecursiveRefinementSolver(nn.Module):
         self.factual_kg = factual_kg
     
     def initial_draft(
-        self, 
+        self,
         task_embedding: torch.Tensor,
         task_tokens: torch.Tensor
     ) -> torch.Tensor:
         """
         Generate rule-guided initial solution draft
-        
+
         Args:
             task_embedding: Embedded task specification [B, L, D]
             task_tokens: Original task tokens [B, L]
-            
+
         Returns:
             Initial solution embedding [B, L, D]
         """
         batch_size, seq_len, hidden_size = task_embedding.shape
-        
+
         if self.rule_verifier is not None:
             # Use rule knowledge to guide initial solution
             initial_tokens = self.rule_verifier.suggest_initial_solution(task_tokens)
             if initial_tokens is not None:
+                # Pad or trim to match task sequence length
+                current_len = initial_tokens.shape[1]
+                if current_len < seq_len:
+                    # Pad with zeros (padding token)
+                    padding = torch.zeros(
+                        (batch_size, seq_len - current_len),
+                        dtype=initial_tokens.dtype,
+                        device=initial_tokens.device
+                    )
+                    initial_tokens = torch.cat([initial_tokens, padding], dim=1)
+                elif current_len > seq_len:
+                    # Trim to match
+                    initial_tokens = initial_tokens[:, :seq_len]
+
                 return self.output_embedding(initial_tokens)
-        
+
         # Fallback: random initialization
         return self.output_embedding.init_random_solution(
             batch_size, seq_len, task_embedding.device
