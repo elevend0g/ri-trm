@@ -181,16 +181,17 @@ class Benchmark(ABC):
             }
     
     def _text_to_tokens(self, text: str) -> torch.Tensor:
-        """Convert text to tokens (placeholder)"""
-        # Simplified tokenization
-        words = text.split()
-        tokens = list(range(1, len(words) + 1))  # Simple mapping
-        return torch.tensor(tokens, dtype=torch.long).unsqueeze(0)
-    
+        """Convert text to tokens using real tokenizer"""
+        from ..tokenizer import get_tokenizer
+        tokenizer = get_tokenizer(model_name="gpt2", max_length=512)
+        tokens = tokenizer.encode(text, padding=True, return_tensors=True)
+        return tokens.unsqueeze(0) if tokens.dim() == 1 else tokens
+
     def _tokens_to_text(self, tokens: torch.Tensor) -> str:
-        """Convert tokens to text (placeholder)"""
-        # Simplified detokenization
-        return f"# Generated solution from {tokens.numel()} tokens\npass"
+        """Convert tokens to text using real tokenizer"""
+        from ..tokenizer import get_tokenizer
+        tokenizer = get_tokenizer(model_name="gpt2", max_length=512)
+        return tokenizer.decode(tokens, skip_special_tokens=True)
     
     def _get_memory_usage(self) -> float:
         """Get current memory usage in MB"""
@@ -318,7 +319,7 @@ class HumanEvalBenchmark(Benchmark):
             ], capture_output=True, text=True, timeout=10)
             
             # Parse results
-            if result.returncode == 0 and "PASSED:" in result.stdout:
+            if result.returncode == 0 and result.stdout and "PASSED:" in result.stdout:
                 output_line = [line for line in result.stdout.split('\n') if 'PASSED:' in line][0]
                 passed, total = output_line.split('PASSED:')[1].split('/TOTAL:')
                 passed = int(passed)

@@ -210,22 +210,35 @@ class RITRMTrainer:
         """Initialize training components"""
         config = self.config
         
-        # Collect all trainable parameters
-        all_params = []
-        all_params.extend(self.network.parameters())
-        all_params.extend(self.input_embedding.parameters())
-        all_params.extend(self.output_embedding.parameters())
-        all_params.extend(self.latent_embedding.parameters())
-        all_params.extend(self.output_head.parameters())
-        all_params.extend(self.confidence_head.parameters())
-        
+        # Collect all trainable parameters (deduplicate to avoid shared params)
+        # Use dict with id() as key to handle weight sharing between modules
+        param_dict = {}
+
+        # Add parameters from all modules
+        for module in [
+            self.network,
+            self.input_embedding,
+            self.output_embedding,
+            self.latent_embedding,
+            self.output_head,
+            self.confidence_head
+        ]:
+            for param in module.parameters():
+                param_dict[id(param)] = param
+
         # Add knowledge component parameters
         if self.rule_graph:
-            all_params.extend(self.rule_graph.parameters())
+            for param in self.rule_graph.parameters():
+                param_dict[id(param)] = param
         if self.fact_graph:
-            all_params.extend(self.fact_graph.parameters())
+            for param in self.fact_graph.parameters():
+                param_dict[id(param)] = param
         if self.path_memory:
-            all_params.extend(self.path_memory.parameters())
+            for param in self.path_memory.parameters():
+                param_dict[id(param)] = param
+
+        # Get unique parameters only
+        all_params = list(param_dict.values())
         
         # Optimizer
         self.optimizer = optim.AdamW(

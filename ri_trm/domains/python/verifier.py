@@ -71,7 +71,20 @@ class PythonSyntaxVerifier:
         if not ast_violations:  # Only if AST parsing succeeded
             indent_violations = self._check_indentation(code)
             violations.extend(indent_violations)
-        
+
+        # 4. Check expanded structural rules (K_R expansion from instructions.md)
+        structural_violations = self._check_structural_rules(code)
+        violations.extend(structural_violations)
+
+        # 5. Check for bare except blocks (if AST parsed successfully)
+        if not ast_violations:
+            try:
+                tree = ast.parse(code)
+                bare_except_violations = self._check_bare_except(tree)
+                violations.extend(bare_except_violations)
+            except:
+                pass  # Already reported AST errors
+
         return violations
     
     def _check_tokenization(self, code: str) -> List[Violation]:
@@ -152,11 +165,11 @@ class PythonSyntaxVerifier:
         """Check for consistent indentation"""
         violations = []
         lines = code.split('\n')
-        
+
         indent_levels = []
         uses_tabs = False
         uses_spaces = False
-        
+
         for i, line in enumerate(lines, 1):
             if line.strip():  # Skip empty lines
                 # Count leading whitespace
@@ -166,9 +179,19 @@ class PythonSyntaxVerifier:
                         uses_tabs = True
                     if ' ' in line[:leading_ws]:
                         uses_spaces = True
-                    
+
                     indent_levels.append((i, leading_ws, line[:leading_ws]))
-        
+
+        # Check for tabs (PEP 8 recommends spaces only)
+        if uses_tabs:
+            violations.append(Violation(
+                rule_id="py_tabs_in_indentation",
+                rule_name="Tabs in Indentation",
+                message="Code uses tabs for indentation",
+                severity="warning",
+                suggestion="Use spaces instead of tabs (PEP 8 recommendation)"
+            ))
+
         # Check for mixed tabs and spaces
         if uses_tabs and uses_spaces:
             violations.append(Violation(
@@ -178,7 +201,7 @@ class PythonSyntaxVerifier:
                 severity="error",
                 suggestion="Use either tabs or spaces consistently (spaces recommended)"
             ))
-        
+
         # Check for irregular indentation levels (when using spaces)
         if uses_spaces and not uses_tabs:
             space_counts = [level for _, level, ws in indent_levels if ' ' in ws]
@@ -193,7 +216,134 @@ class PythonSyntaxVerifier:
                         severity="warning",
                         suggestion="Use 4 spaces for each indentation level"
                     ))
-        
+
+        return violations
+
+    def _check_structural_rules(self, code: str) -> List[Violation]:
+        """
+        Check specific structural rules from K_R expansion
+
+        Based on instructions.md Priority 2: Expand K_R with specific rules
+        """
+        violations = []
+        lines = code.split('\n')
+
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+
+            # Check for missing colons after control structures
+            if stripped and not stripped.startswith('#'):
+                # def function(): should have colon
+                if re.match(r'^\s*def\s+\w+\s*\([^)]*\)\s*$', line):
+                    violations.append(Violation(
+                        rule_id="py_missing_colon_def",
+                        rule_name="Missing Colon After Def",
+                        message=f"Missing ':' after function definition at line {i}",
+                        severity="error",
+                        location=f"line {i}",
+                        suggestion="Add ':' at the end of the def statement"
+                    ))
+
+                # if condition: should have colon
+                if re.match(r'^\s*if\s+.+[^:]\s*$', line) and not line.rstrip().endswith(':'):
+                    violations.append(Violation(
+                        rule_id="py_missing_colon_if",
+                        rule_name="Missing Colon After If",
+                        message=f"Missing ':' after if statement at line {i}",
+                        severity="error",
+                        location=f"line {i}",
+                        suggestion="Add ':' at the end of the if statement"
+                    ))
+
+                # for loop: should have colon
+                if re.match(r'^\s*for\s+.+\s+in\s+.+[^:]\s*$', line) and not line.rstrip().endswith(':'):
+                    violations.append(Violation(
+                        rule_id="py_missing_colon_for",
+                        rule_name="Missing Colon After For",
+                        message=f"Missing ':' after for statement at line {i}",
+                        severity="error",
+                        location=f"line {i}",
+                        suggestion="Add ':' at the end of the for statement"
+                    ))
+
+                # while loop: should have colon
+                if re.match(r'^\s*while\s+.+[^:]\s*$', line) and not line.rstrip().endswith(':'):
+                    violations.append(Violation(
+                        rule_id="py_missing_colon_while",
+                        rule_name="Missing Colon After While",
+                        message=f"Missing ':' after while statement at line {i}",
+                        severity="error",
+                        location=f"line {i}",
+                        suggestion="Add ':' at the end of the while statement"
+                    ))
+
+                # class definition: should have colon
+                if re.match(r'^\s*class\s+\w+.*[^:]\s*$', line) and not line.rstrip().endswith(':'):
+                    violations.append(Violation(
+                        rule_id="py_missing_colon_class",
+                        rule_name="Missing Colon After Class",
+                        message=f"Missing ':' after class definition at line {i}",
+                        severity="error",
+                        location=f"line {i}",
+                        suggestion="Add ':' at the end of the class statement"
+                    ))
+
+        # Check matched delimiters
+        paren_count = code.count('(') - code.count(')')
+        bracket_count = code.count('[') - code.count(']')
+        brace_count = code.count('{') - code.count('}')
+
+        if paren_count != 0:
+            violations.append(Violation(
+                rule_id="py_unmatched_parens",
+                rule_name="Unmatched Parentheses",
+                message=f"Unmatched parentheses: {abs(paren_count)} {'opening' if paren_count > 0 else 'closing'} paren(s) extra",
+                severity="error",
+                suggestion="Check for matching opening and closing parentheses"
+            ))
+
+        if bracket_count != 0:
+            violations.append(Violation(
+                rule_id="py_unmatched_brackets",
+                rule_name="Unmatched Brackets",
+                message=f"Unmatched brackets: {abs(bracket_count)} {'opening' if bracket_count > 0 else 'closing'} bracket(s) extra",
+                severity="error",
+                suggestion="Check for matching opening and closing brackets"
+            ))
+
+        if brace_count != 0:
+            violations.append(Violation(
+                rule_id="py_unmatched_braces",
+                rule_name="Unmatched Braces",
+                message=f"Unmatched braces: {abs(brace_count)} {'opening' if brace_count > 0 else 'closing'} brace(s) extra",
+                severity="error",
+                suggestion="Check for matching opening and closing braces"
+            ))
+
+        return violations
+
+    def _check_bare_except(self, tree: ast.AST) -> List[Violation]:
+        """
+        Check for bare except blocks (Priority 2 from instructions.md)
+
+        Bare except catches all exceptions including SystemExit and KeyboardInterrupt,
+        which is generally bad practice.
+        """
+        violations = []
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler):
+                # ExceptHandler with type=None is a bare except
+                if node.type is None:
+                    violations.append(Violation(
+                        rule_id="py_bare_except",
+                        rule_name="Bare Except Block",
+                        message=f"Bare 'except:' block at line {node.lineno}",
+                        severity="warning",
+                        location=f"line {node.lineno}",
+                        suggestion="Specify exception type (e.g., 'except Exception:' or 'except ValueError:')"
+                    ))
+
         return violations
 
 
